@@ -28,8 +28,9 @@ new_urls = [
 ]
 JSON_FILE = "round_results.json"
 RATINGS_FILE = "player_ratings.json"
+H2H_FILE = 'head_to_head.json'
 
-#TODO: On the player page, selecting a 1 v 1 matchup will plot the player evolutions in the same graph, comparison
+#TODO: Order players alphabetically
 
 def scrape_results(url):
     #TODO: also extract and store the tournament name and date
@@ -104,6 +105,33 @@ def save_ratings(players):
         json.dump(data, f)
 
 
+def update_h2h(white, black, result):
+    # Load or initialize the H2H data
+    if os.path.exists(H2H_FILE):
+        with open(H2H_FILE, "r") as f:
+            h2h = json.load(f)
+    else:
+        h2h = {}
+
+    # Ensure players exist in the H2H dictionary
+    if white not in h2h:
+        h2h[white] = {}
+    if black not in h2h[white]:
+        h2h[white][black] = {'win': 0, 'loss': 0, 'draw': 0}
+
+    # Update the H2H record based on the result
+    if result == "1-0":
+        h2h[white][black]['win'] += 1
+    elif result == "0-1":
+        h2h[white][black]['loss'] += 1
+    else:
+        h2h[white][black]['draw'] += 1
+
+    # Save the updated H2H data
+    with open(H2H_FILE, "w") as f:
+        json.dump(h2h, f)
+
+
 def update_ratings_dataframe():
     # Check if the CSV file exists and initialize/load the DataFrame accordingly
     if os.path.exists('player_ratings.csv'):
@@ -129,6 +157,9 @@ def update_ratings_dataframe():
             else:
                 white_result, black_result = 0.5, 0.5
                 
+            # Update H2H record after processing the game result
+            update_h2h(white, black, result)
+
             # Ensure players exist in the players dictionary
             # If they don't exist, they'll be initialized with default values.
             if white not in players:
@@ -204,6 +235,36 @@ def plot_player_evolution():
         plt.show()
 
 
+def plot_two_player_evolution(player1, player2, df):
+    """Plots the rating evolution for two players."""
+    all_tournaments = sorted({col.split('-')[0] for col in df.columns})
+
+    plt.figure(figsize=(10, 6))
+    for player_name, color in [(player1, 'blue'), (player2, 'orange')]:
+        end_of_tournament_ratings = []
+        player_data = df.loc[player_name]
+        last_known_rating = None
+
+        for tournament in all_tournaments:
+            tournament_data = player_data.filter(like=tournament)
+            if not tournament_data.isna().all():
+                last_known_rating = tournament_data.dropna().values[-1]
+                end_of_tournament_ratings.append(last_known_rating)
+            else:
+                end_of_tournament_ratings.append(last_known_rating)
+
+        plt.plot(all_tournaments, end_of_tournament_ratings, label=player_name, color=color)
+
+    plt.xticks(all_tournaments, [f'Tournament {i}' for i in range(1, len(all_tournaments)+1)], rotation=45)
+    plt.xlabel('Tournaments')
+    plt.ylabel('Rating')
+    plt.title(f'Rating Evolution for {player1} and {player2}')
+    plt.legend()
+    plt.grid(True, which='both', linestyle='--', linewidth=0.5)
+    plt.tight_layout()
+    st.pyplot(plt)
+
+
 def plot_player_evolution_streamlit(player_name, df):
     all_tournaments = sorted({col.split('-')[0] for col in df.columns})
 
@@ -241,10 +302,29 @@ def plot_player_evolution_streamlit(player_name, df):
     plt.ylabel('Rating')
     plt.title(f'Rating Evolution for {player_name}')
     plt.legend()
+    #TODO: add rating after round to legend for red dots, but only once
     plt.grid(True, which='both', linestyle='--', linewidth=0.5)
     plt.tight_layout()
 
     st.pyplot(plt)
+
+    # Load H2H data
+    with open(H2H_FILE, "r") as f:
+        h2h = json.load(f)
+        #TODO: H2H seems wrong if you compare the same H2H from the two players perspective
+
+    if player_name in h2h:
+        st.header(f"Head to Head Records for {player_name}:")
+
+        # Render a hyperlink for each player in the H2H record
+        for opponent, record in h2h[player_name].items():
+            if st.button(f"View Rating Evolution with {opponent}"):
+                plot_two_player_evolution(player_name, opponent, df)
+            else:
+                st.write(f"{opponent}: {record}")
+
+    else:
+        st.write(f"No Head to Head Records found for {player_name}.")
 
 
 def main():
