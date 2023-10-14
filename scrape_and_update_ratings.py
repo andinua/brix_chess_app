@@ -10,6 +10,7 @@ import json
 import os
 import pandas as pd
 import numpy as np
+import streamlit as st
 
 # everything should be stored and the loaded for plotting; there should be no updating for tournaments already included in the rating
 
@@ -23,10 +24,12 @@ new_urls = [
     "https://swissonlinetournament.com/Tournament/Details/130cbc69c4fc4eea9747aa65bb33f985?allRounds=true",
     "https://swissonlinetournament.com/Tournament/Details/9550daf89e30439580f4ea1270c3c20c?allRounds=true",
     "https://swissonlinetournament.com/Tournament/Details/ea2474d6681f48f288d33163b6c5b9d3?allRounds=true",
+    "https://swissonlinetournament.com/Tournament/Details/24783a7442cc4666ad4350fd8e47f617?allRounds=true"
 ]
 JSON_FILE = "round_results.json"
 RATINGS_FILE = "player_ratings.json"
 
+#TODO: On the player page, selecting a 1 v 1 matchup will plot the player evolutions in the same graph, comparison
 
 def scrape_results(url):
     #TODO: also extract and store the tournament name and date
@@ -172,6 +175,7 @@ def plot_player_evolution():
                 if tournament != 't1':
                     plt.scatter(tournament_ticks, tournament_data.dropna().values, color='red', s=15)  # Plot round ratings
                 else:
+                    # Don't plot round rating and max rating for first tournament, high volatility increases y range
                     plt.scatter([tournament], [last_known_rating], color='red', s=0)  # Leave empty space
                 
                 last_known_rating = tournament_data.dropna().values[-1]
@@ -200,10 +204,66 @@ def plot_player_evolution():
         plt.show()
 
 
-if __name__ == "__main__":
+def plot_player_evolution_streamlit(player_name, df):
+    all_tournaments = sorted({col.split('-')[0] for col in df.columns})
+
+    plt.figure(figsize=(10, 6))
+
+    end_of_tournament_ratings = []
+    max_ratings = []
+    last_known_rating = None
+
+    player_data = df.loc[player_name]
+
+    for tournament in all_tournaments:
+        tournament_data = player_data.filter(like=tournament)
+
+        if not tournament_data.isna().all():
+            tournament_ticks = [tournament] * len(tournament_data.dropna())
+            if tournament != 't1':
+                plt.scatter(tournament_ticks, tournament_data.dropna().values, color='red', s=15)
+            else:
+                plt.scatter([tournament], [last_known_rating], color='red', s=0)
+
+            last_known_rating = tournament_data.dropna().values[-1]
+            end_of_tournament_ratings.append(last_known_rating)
+            max_ratings.append(tournament_data.dropna().values.max() if tournament != 't1' else np.nan)
+        else:
+            end_of_tournament_ratings.append(last_known_rating)
+            max_ratings.append(np.nan)
+            plt.scatter([tournament], [last_known_rating], color='red', s=0)
+
+    plt.plot(all_tournaments, end_of_tournament_ratings, label='End of Tournament', marker='o', linestyle='-')
+    plt.scatter(all_tournaments, max_ratings, color='green', s=50, marker='*', label='Max Rating in Tournament')
+
+    plt.xticks(all_tournaments, [f'Tournament {i}' for i in range(1, len(all_tournaments)+1)], rotation=45)
+    plt.xlabel('Tournaments')
+    plt.ylabel('Rating')
+    plt.title(f'Rating Evolution for {player_name}')
+    plt.legend()
+    plt.grid(True, which='both', linestyle='--', linewidth=0.5)
+    plt.tight_layout()
+
+    st.pyplot(plt)
+
+
+def main():
     for url in new_urls:
         if check_new_tournament(url):
             results = scrape_results(url)
             save_results_to_json(url, results)
             update_ratings_dataframe()
-    plot_player_evolution()
+    # plot_player_evolution()
+
+    st.title('Player Rating Evolution')
+    df = pd.read_csv('player_ratings.csv', index_col=0)
+
+    # Creating a select box for players
+    selected_player = st.selectbox('Select a player:', df.index)
+
+    # Plotting the selected player's data
+    plot_player_evolution_streamlit(selected_player, df)
+
+
+if __name__ == '__main__':
+    main()
