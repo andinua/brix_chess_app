@@ -7,8 +7,10 @@ from bs4 import BeautifulSoup
 from glicko import Player
 import matplotlib.pyplot as plt
 import json
+import os
+import pandas as pd
+import numpy as np
 
-# TODO: Currently ratings are stored and then recalculated for each tournament, 
 # everything should be stored and the loaded for plotting; there should be no updating for tournaments already included in the rating
 
 new_urls = [
@@ -99,110 +101,109 @@ def save_ratings(players):
         json.dump(data, f)
 
 
-def plot_player_evolution():
+def update_ratings_dataframe():
+    # Check if the CSV file exists and initialize/load the DataFrame accordingly
+    if os.path.exists('player_ratings.csv'):
+        df = pd.read_csv('player_ratings.csv', index_col=0)
+    else:
+        df = pd.DataFrame()
+
     with open(JSON_FILE, "r") as f:
         data = json.load(f)
 
     players = load_ratings()
-    players_ratings = {}
 
-    tournament_lens = [len(tournament) for tournament_key, tournament in data.items()]
+    # Assuming the last key in data is the new tournament
+    new_tournament_key = list(data.keys())[-1]
+    new_tournament = data[new_tournament_key]
 
-    player_tournament_mapping = {}  # This dictionary maps a player to the tournaments they participated in
+    for round_index, round_results in enumerate(new_tournament):
+        for white, black, result in round_results:
+            if result == "1-0":
+                white_result, black_result = 1, 0
+            elif result == "0-1":
+                white_result, black_result = 0, 1
+            else:
+                white_result, black_result = 0.5, 0.5
+                
+            # Ensure players exist in the players dictionary
+            # If they don't exist, they'll be initialized with default values.
+            if white not in players:
+                players[white] = Player()
+            if black not in players:
+                players[black] = Player()
 
-    for tournament_index, (tournament_key, tournament) in enumerate(data.items()):
-        for round_results in tournament:
-            for white, black, result in round_results:
-                if result == "1-0":
-                    white_result, black_result = 1, 0
-                elif result == "0-1":
-                    white_result, black_result = 0, 1
-                else:
-                    white_result, black_result = 0.5, 0.5
-                    
-                # Ensure players exist in the players dictionary
-                # If they don't exist, they'll be initialized with default values.
-                if white not in players:
-                    players[white] = Player()
-                if black not in players:
-                    players[black] = Player()
+            players[white].update_player([players[black].rating], [players[black].rd], [white_result])
+            players[black].update_player([players[white].rating], [players[white].rd], [black_result])
 
-                players[white].update_player([players[black].rating], [players[black].rd], [white_result])
-                players[black].update_player([players[white].rating], [players[white].rd], [black_result])
-
-                if white not in players_ratings:
-                    players_ratings[white] = [players[white].rating]
-                else:
-                    players_ratings[white].append(players[white].rating)
-
-                if black not in players_ratings:
-                    players_ratings[black] = [players[black].rating]
-                else:
-                    players_ratings[black].append(players[black].rating)
-
-                # Map players to tournaments they participated in
-                if white not in player_tournament_mapping:
-                    player_tournament_mapping[white] = []
-                if black not in player_tournament_mapping:
-                    player_tournament_mapping[black] = []
-
-                if tournament_index not in player_tournament_mapping[white]:
-                    player_tournament_mapping[white].append(tournament_index)
-                if tournament_index not in player_tournament_mapping[black]:
-                    player_tournament_mapping[black].append(tournament_index)
+            # Update dataframe with the new ratings for the new tournament
+            col_name_white = f't{len(data)}-r{round_index + 1}'
+            df.loc[white, col_name_white] = players[white].rating
+            df.loc[black, col_name_white] = players[black].rating
 
     save_ratings(players)
+    df.to_csv('player_ratings.csv')  # Save the updated dataframe to the same CSV file
 
-    for player_name, player_tournaments in player_tournament_mapping.items():
+
+def plot_player_evolution():
+    df = pd.read_csv('player_ratings.csv', index_col=0)
+    
+    # Identify all available tournaments from the dataframe
+    all_tournaments = sorted({col.split('-')[0] for col in df.columns})
+
+    for player_name in df.index:
         plt.figure(figsize=(10, 6))
-        end_of_tournament_ratings = []
-
-        # Plot the rating evolution across tournaments with a line plot
-        for t_index in player_tournaments:
-            t_length = tournament_lens[t_index]
-            start_index = sum(tournament_lens[i] for i in player_tournaments if i < t_index)
-            end_index = start_index + t_length
-
-            # Ensure ratings exist for the given range
-            if start_index < len(players_ratings[player_name]) and end_index <= len(players_ratings[player_name]):
-                # Plot round ratings for the current tournament
-                round_ticks = [t_index] * t_length
-                plt.scatter(round_ticks, players_ratings[player_name][start_index:end_index], color='red', s=15)
-
-                # Update end of tournament ratings
-                if end_index <= len(players_ratings[player_name]):
-                    end_of_tournament_ratings.append(players_ratings[player_name][end_index - 1])
-                else:
-                    end_of_tournament_ratings.append(players_ratings[player_name][-1])
-
-        plt.plot(player_tournaments, end_of_tournament_ratings, label='End of Tournament', marker='o', linestyle='-')
         
-        # Highlight the maximum rating for each tournament with a green dot
+        # Initialize lists for end of tournament and max ratings
+        end_of_tournament_ratings = []
         max_ratings = []
-        for t_index in player_tournaments:
-            t_length = tournament_lens[t_index]
-            start_index = sum(tournament_lens[i] for i in player_tournaments if i < t_index)
-            end_index = start_index + t_length
+        last_known_rating = None  # This will keep track of the last known rating
 
-            if start_index < len(players_ratings[player_name]) and end_index <= len(players_ratings[player_name]):
-                max_ratings.append(max(players_ratings[player_name][start_index:end_index]))
+        # Extract data for the player
+        player_data = df.loc[player_name]
+
+        for tournament in all_tournaments:
+            # Filtering data for the specific tournament
+            tournament_data = player_data.filter(like=tournament)
+            
+            # Check if player has data for the tournament
+            if not tournament_data.isna().all():
+                tournament_ticks = [tournament] * len(tournament_data.dropna())
+                if tournament != 't1':
+                    plt.scatter(tournament_ticks, tournament_data.dropna().values, color='red', s=15)  # Plot round ratings
+                else:
+                    plt.scatter([tournament], [last_known_rating], color='red', s=0)  # Leave empty space
+                
+                last_known_rating = tournament_data.dropna().values[-1]
+                end_of_tournament_ratings.append(last_known_rating)
+                max_ratings.append(tournament_data.dropna().values.max() if tournament != 't1' else np.nan)
             else:
-                max_ratings.append(players_ratings[player_name][-1])
+                # Player did not participate in this tournament
+                end_of_tournament_ratings.append(last_known_rating)  # Use the last known rating if available
+                max_ratings.append(np.nan)
+                plt.scatter([tournament], [last_known_rating], color='red', s=0)  # Leave empty space
 
-        plt.scatter(player_tournaments, max_ratings, color='green', s=50, marker='*', label='Max Rating in Tournament')
+        # Plot the end of tournament ratings and max ratings
+        plt.plot(all_tournaments, end_of_tournament_ratings, label='End of Tournament', marker='o', linestyle='-')
+        plt.scatter(all_tournaments, max_ratings, color='green', s=50, marker='*', label='Max Rating in Tournament')
 
+        # Settings for the x-axis
+        plt.xticks(all_tournaments, [f'Tournament {i}' for i in range(1, len(all_tournaments)+1)], rotation=45)
+
+        # Title, labels, and other configurations
         plt.xlabel('Tournaments')
         plt.ylabel('Rating')
         plt.title(f'Rating Evolution for {player_name}')
         plt.legend()
         plt.grid(True, which='both', linestyle='--', linewidth=0.5)
         plt.tight_layout()
-        plt.xticks(player_tournaments, [f'Tournament {i+1}' for i in player_tournaments])
         plt.show()
+
 
 if __name__ == "__main__":
     for url in new_urls:
         if check_new_tournament(url):
             results = scrape_results(url)
             save_results_to_json(url, results)
+            update_ratings_dataframe()
     plot_player_evolution()
