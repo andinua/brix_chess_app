@@ -113,19 +113,26 @@ def update_h2h(white, black, result):
     else:
         h2h = {}
 
-    # Ensure players exist in the H2H dictionary
-    if white not in h2h:
-        h2h[white] = {}
-    if black not in h2h[white]:
-        h2h[white][black] = {'win': 0, 'loss': 0, 'draw': 0}
+    # Helper function to ensure a player and opponent exists in the H2H data
+    def ensure_player_opponent(player, opponent):
+        if player not in h2h:
+            h2h[player] = {}
+        if opponent not in h2h[player]:
+            h2h[player][opponent] = {'win': 0, 'loss': 0, 'draw': 0}
+
+    ensure_player_opponent(white, black)
+    ensure_player_opponent(black, white)
 
     # Update the H2H record based on the result
     if result == "1-0":
         h2h[white][black]['win'] += 1
+        h2h[black][white]['loss'] += 1
     elif result == "0-1":
         h2h[white][black]['loss'] += 1
+        h2h[black][white]['win'] += 1
     else:
         h2h[white][black]['draw'] += 1
+        h2h[black][white]['draw'] += 1
 
     # Save the updated H2H data
     with open(H2H_FILE, "w") as f:
@@ -177,62 +184,6 @@ def update_ratings_dataframe():
 
     save_ratings(players)
     df.to_csv('player_ratings.csv')  # Save the updated dataframe to the same CSV file
-
-
-def plot_player_evolution():
-    df = pd.read_csv('player_ratings.csv', index_col=0)
-    
-    # Identify all available tournaments from the dataframe
-    all_tournaments = sorted({col.split('-')[0] for col in df.columns})
-
-    for player_name in df.index:
-        plt.figure(figsize=(10, 6))
-        
-        # Initialize lists for end of tournament and max ratings
-        end_of_tournament_ratings = []
-        max_ratings = []
-        last_known_rating = None  # This will keep track of the last known rating
-
-        # Extract data for the player
-        player_data = df.loc[player_name]
-
-        for tournament in all_tournaments:
-            # Filtering data for the specific tournament
-            tournament_data = player_data.filter(like=tournament)
-            
-            # Check if player has data for the tournament
-            if not tournament_data.isna().all():
-                tournament_ticks = [tournament] * len(tournament_data.dropna())
-                if tournament != 't1':
-                    plt.scatter(tournament_ticks, tournament_data.dropna().values, color='red', s=15)  # Plot round ratings
-                else:
-                    # Don't plot round rating and max rating for first tournament, high volatility increases y range
-                    plt.scatter([tournament], [last_known_rating], color='red', s=0)  # Leave empty space
-                
-                last_known_rating = tournament_data.dropna().values[-1]
-                end_of_tournament_ratings.append(last_known_rating)
-                max_ratings.append(tournament_data.dropna().values.max() if tournament != 't1' else np.nan)
-            else:
-                # Player did not participate in this tournament
-                end_of_tournament_ratings.append(last_known_rating)  # Use the last known rating if available
-                max_ratings.append(np.nan)
-                plt.scatter([tournament], [last_known_rating], color='red', s=0)  # Leave empty space
-
-        # Plot the end of tournament ratings and max ratings
-        plt.plot(all_tournaments, end_of_tournament_ratings, label='End of Tournament', marker='o', linestyle='-')
-        plt.scatter(all_tournaments, max_ratings, color='green', s=50, marker='*', label='Max Rating in Tournament')
-
-        # Settings for the x-axis
-        plt.xticks(all_tournaments, [f'Tournament {i}' for i in range(1, len(all_tournaments)+1)], rotation=45)
-
-        # Title, labels, and other configurations
-        plt.xlabel('Tournaments')
-        plt.ylabel('Rating')
-        plt.title(f'Rating Evolution for {player_name}')
-        plt.legend()
-        plt.grid(True, which='both', linestyle='--', linewidth=0.5)
-        plt.tight_layout()
-        plt.show()
 
 
 def plot_two_player_evolution(player1, player2, df):
@@ -311,18 +262,27 @@ def plot_player_evolution_streamlit(player_name, df):
     # Load H2H data
     with open(H2H_FILE, "r") as f:
         h2h = json.load(f)
-        #TODO: H2H seems wrong if you compare the same H2H from the two players perspective
 
     if player_name in h2h:
         st.header(f"Head to Head Records for {player_name}:")
 
-        # Render a hyperlink for each player in the H2H record
         for opponent, record in h2h[player_name].items():
             if st.button(f"View Rating Evolution with {opponent}"):
                 plot_two_player_evolution(player_name, opponent, df)
             else:
-                st.write(f"{opponent}: {record}")
-
+                # Card-like visuals for each H2H record
+                col1, col2, col3, col4, col5 = st.columns([1, 3, 2, 2, 2])
+                with col1:
+                    st.write(" ")
+                with col2:
+                    st.subheader(opponent)
+                with col3:
+                    st.write(f"Wins: {record['win']}")
+                with col4:
+                    st.write(f"Losses: {record['loss']}")
+                with col5:
+                    st.write(f"Draws: {record['draw']}")
+                st.markdown("---")
     else:
         st.write(f"No Head to Head Records found for {player_name}.")
 
