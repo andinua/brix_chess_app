@@ -300,9 +300,9 @@ def plot_player_evolution_streamlit(player_name, df):
     hover_texts = []
 
     last_known_rating = None
-    player_data = df.loc[player_name]
+    # player_data = df.loc[player_name]
     # player_data = df.loc[player_name].apply(lambda x: int(round(x)) if not np.isnan(x) else x)
-    # player_data = df.loc[player_name].apply(format_values)
+    player_data = df.loc[player_name].apply(format_values)
 
     for tournament in all_tournaments:
         tournament_data = player_data.filter(like=tournament)
