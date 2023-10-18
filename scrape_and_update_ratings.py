@@ -29,6 +29,7 @@ new_urls = [
 JSON_FILE = "round_results.json"
 RATINGS_FILE = "player_ratings.json"
 H2H_FILE = 'head_to_head.json'
+RESULTS_FILE = 'player_results.json'
 
 #TODO: Order players alphabetically
 
@@ -99,21 +100,37 @@ def load_ratings():
         return {}
 
 
+def load_results_by_color():
+    try:
+        with open(RESULTS_FILE, 'r') as f:
+            return json.load(f)
+    except (FileNotFoundError, json.JSONDecodeError):
+        return {}
+
+
+def save_results_by_color(results):
+    with open(RESULTS_FILE, 'w') as f:
+        json.dump(results, f, indent=4)
+
+
 def save_ratings(players):
     with open(RATINGS_FILE, "w") as f:
         data = {k: {"rating": v.rating, "rd": v.rd} for k, v in players.items()}
         json.dump(data, f)
 
-
-def update_h2h(white, black, result):
-    # Load or initialize the H2H data
-    if os.path.exists(H2H_FILE):
+def load_h2h():
+    try:
         with open(H2H_FILE, "r") as f:
-            h2h = json.load(f)
-    else:
-        h2h = {}
+            return json.load(f)
+    except (FileNotFoundError, json.JSONDecodeError):
+        return {}
 
-    # Helper function to ensure a player and opponent exists in the H2H data
+def save_h2h(h2h):
+    with open(H2H_FILE, "w") as f:
+        json.dump(h2h, f)
+
+
+def update_h2h(h2h, white, black, result):
     def ensure_player_opponent(player, opponent):
         if player not in h2h:
             h2h[player] = {}
@@ -123,7 +140,6 @@ def update_h2h(white, black, result):
     ensure_player_opponent(white, black)
     ensure_player_opponent(black, white)
 
-    # Update the H2H record based on the result
     if result == "1-0":
         h2h[white][black]['win'] += 1
         h2h[black][white]['loss'] += 1
@@ -133,10 +149,6 @@ def update_h2h(white, black, result):
     else:
         h2h[white][black]['draw'] += 1
         h2h[black][white]['draw'] += 1
-
-    # Save the updated H2H data
-    with open(H2H_FILE, "w") as f:
-        json.dump(h2h, f)
 
 
 def update_ratings_dataframe():
@@ -149,7 +161,10 @@ def update_ratings_dataframe():
     with open(JSON_FILE, "r") as f:
         data = json.load(f)
 
+    results_by_color = load_results_by_color()  # Load results from the JSON file
+
     players = load_ratings()
+    h2h = load_h2h()  # Load H2H data at the start
 
     # Assuming the last key in data is the new tournament
     new_tournament_key = list(data.keys())[-1]
@@ -165,7 +180,7 @@ def update_ratings_dataframe():
                 white_result, black_result = 0.5, 0.5
                 
             # Update H2H record after processing the game result
-            update_h2h(white, black, result)
+            update_h2h(h2h, white, black, result)
 
             # Ensure players exist in the players dictionary
             # If they don't exist, they'll be initialized with default values.
@@ -182,7 +197,25 @@ def update_ratings_dataframe():
             df.loc[white, col_name_white] = players[white].rating
             df.loc[black, col_name_white] = players[black].rating
 
+            # Update the results_by_color for each player based on their color and game outcome
+            if white not in results_by_color:
+                results_by_color[white] = {"white": {"W": 0, "D": 0, "L": 0}, "black": {"W": 0, "D": 0, "L": 0}}
+            if black not in results_by_color:
+                results_by_color[black] = {"white": {"W": 0, "D": 0, "L": 0}, "black": {"W": 0, "D": 0, "L": 0}}
+            
+            if result == "1-0":
+                results_by_color[white]["white"]["W"] += 1
+                results_by_color[black]["black"]["L"] += 1
+            elif result == "0-1":
+                results_by_color[white]["white"]["L"] += 1
+                results_by_color[black]["black"]["W"] += 1
+            else:
+                results_by_color[white]["white"]["D"] += 1
+                results_by_color[black]["black"]["D"] += 1
+
+    save_h2h(h2h)
     save_ratings(players)
+    save_results_by_color(results_by_color)
     df.to_csv('player_ratings.csv')  # Save the updated dataframe to the same CSV file
 
 
@@ -214,6 +247,40 @@ def plot_two_player_evolution(player1, player2, df):
     plt.grid(True, which='both', linestyle='--', linewidth=0.5)
     plt.tight_layout()
     st.pyplot(plt)
+
+
+def plot_player_results_by_color(player_name):
+    # Load player results
+    with open(RESULTS_FILE, "r") as f:
+        results_data = json.load(f)
+
+    player_results = results_data.get(player_name, None)
+    if not player_results:
+        st.write(f"No results found for {player_name}.")
+        return
+
+    colors = ['white', 'black']
+    outcomes = ['W', 'D', 'L']
+    outcome_labels = ['Win', 'Draw', 'Loss']
+    outcome_colors = ['green', 'gray', 'red']  # Adding colors for each outcome
+
+    bar_width = 0.2
+    bar_positions = np.arange(len(colors))
+
+    fig, ax = plt.subplots(figsize=(10, 6))
+    for i, outcome in enumerate(outcomes):
+        results = [player_results[color][outcome] for color in colors]
+        ax.bar(bar_positions + i * bar_width, results, width=bar_width, label=outcome_labels[i], color=outcome_colors[i])
+
+    ax.set_xlabel('Color')
+    ax.set_ylabel('Number of Games')
+    ax.set_title(f'Game Outcomes for {player_name} by Color')
+    ax.set_xticks(bar_positions + bar_width)
+    ax.set_xticklabels(colors)
+    ax.legend()
+
+    plt.tight_layout()
+    st.pyplot(fig)
 
 
 def plot_player_evolution_streamlit(player_name, df):
@@ -259,30 +326,53 @@ def plot_player_evolution_streamlit(player_name, df):
 
     st.pyplot(plt)
 
+    # Plot player results by color
+    st.header(f"Game Outcomes by Color for {player_name}:")
+    plot_player_results_by_color(player_name)
+
     # Load H2H data
     with open(H2H_FILE, "r") as f:
         h2h = json.load(f)
 
     if player_name in h2h:
         st.header(f"Head to Head Records for {player_name}:")
+        
+        # Get all opponents for the player from the H2H data
+        opponents = list(h2h[player_name].keys())
+        
+        # Create a drop-down list of opponents using selectbox
+        selected_opponent = st.selectbox("Select an opponent", opponents)
 
-        for opponent, record in h2h[player_name].items():
-            if st.button(f"View Rating Evolution with {opponent}"):
-                plot_two_player_evolution(player_name, opponent, df)
-            else:
-                # Card-like visuals for each H2H record
-                col1, col2, col3, col4, col5 = st.columns([1, 3, 2, 2, 2])
-                with col1:
-                    st.write(" ")
-                with col2:
-                    st.subheader(opponent)
-                with col3:
+        # Display details only if an opponent is selected from the drop-down list
+        if selected_opponent:
+            if st.button(f"View Rating Evolution with {selected_opponent}"):
+                plot_two_player_evolution(player_name, selected_opponent, df)
+            
+            # Card-like visuals for the selected H2H record
+            record = h2h[player_name][selected_opponent]
+            col1, col2, col3, col4, col5 = st.columns([1, 3, 2, 2, 2])
+            with col1:
+                st.write(" ")
+            with col2:
+                st.subheader(selected_opponent)
+            # Determine the maximum value and apply background color accordingly
+            max_val = max(record['win'], record['draw'], record['loss'])
+            with col3:
+                if record['win'] == max_val:
+                    st.markdown(f"<div style='background-color: green; padding: 10px; border-radius: 5px;'>Wins: {record['win']}</div>", unsafe_allow_html=True)
+                else:
                     st.write(f"Wins: {record['win']}")
-                with col4:
+            with col4:
+                if record['loss'] == max_val:
+                    st.markdown(f"<div style='background-color: red; padding: 10px; border-radius: 5px;'>Losses: {record['loss']}</div>", unsafe_allow_html=True)
+                else:
                     st.write(f"Losses: {record['loss']}")
-                with col5:
+            with col5:
+                if record['draw'] == max_val:
+                    st.markdown(f"<div style='background-color: gray; padding: 10px; border-radius: 5px;'>Draws: {record['draw']}</div>", unsafe_allow_html=True)
+                else:
                     st.write(f"Draws: {record['draw']}")
-                st.markdown("---")
+            st.markdown("---")
     else:
         st.write(f"No Head to Head Records found for {player_name}.")
 
