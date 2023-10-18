@@ -308,9 +308,12 @@ def plot_player_evolution_streamlit(player_name, df):
         tournament_data = player_data.filter(like=tournament)
 
         if not tournament_data.isna().all():
-            for rating in tournament_data.dropna().values:
-                round_ratings.append(rating)
-                hover_texts.append(f"Round Rating: {rating}")
+            # Check if current tournament is not 't1' before plotting round ratings
+            if tournament != 't1':
+                for rating in tournament_data.dropna().values:
+                    round_ratings.append(rating)
+                    hover_texts.append(f"Round Rating: {rating}")
+
             last_known_rating = tournament_data.dropna().values[-1]
             end_of_tournament_ratings.append(last_known_rating)
             max_ratings.append(tournament_data.dropna().values.max() if tournament != 't1' else np.nan)
