@@ -259,6 +259,7 @@ def plot_player_results_by_color(player_name):
         st.write(f"No results found for {player_name}.")
         return
 
+    #TODO: add percentages for winrates
     colors = ['white', 'black']
     outcomes = ['W', 'D', 'L']
     outcome_labels = ['Win', 'Draw', 'Loss']
