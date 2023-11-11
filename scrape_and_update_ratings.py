@@ -311,7 +311,7 @@ def plot_player_evolution_streamlit(player_name, df):
             if tournament != 't1':
                 round_tournament_ticks = [tournament] * len(tournament_data.dropna())
                 round_ratings.extend(tournament_data.dropna().values)
-                hover_texts.extend([f"Round Rating: {rating}" for rating in tournament_data.dropna().values])
+                hover_texts.extend([f"Round {idx + 1} Rating: {rating}" for idx, rating in enumerate(tournament_data.dropna().values)])
                 round_tournaments.extend(round_tournament_ticks)
             else:
                 # If it's 't1', we consider the last known rating which is initialized to None
@@ -334,18 +334,8 @@ def plot_player_evolution_streamlit(player_name, df):
         y=end_of_tournament_ratings,
         mode='lines+markers',
         name='End of Tournament',
-        marker=dict(symbol='circle'),
+        marker=dict(symbol='square', size=15),
         hovertemplate='Tournament: %{x}<br>End Rating: %{y}'
-    ))
-
-    # Plotting max ratings
-    fig.add_trace(go.Scatter(
-        x=all_tournaments,
-        y=max_ratings,
-        mode='markers',
-        name='Max Rating in Tournament',
-        marker=dict(color='green', symbol='star'),
-        hovertemplate='Tournament: %{x}<br>Max Rating: %{y}'
     ))
 
     # Plotting round ratings, with handling of 't1' and non-available data
@@ -359,8 +349,18 @@ def plot_player_evolution_streamlit(player_name, df):
         hovertext=hover_texts
     ))
 
+    # Plotting max ratings
+    fig.add_trace(go.Scatter(
+        x=all_tournaments,
+        y=max_ratings,
+        mode='markers',
+        name='Max Rating in Tournament',
+        marker=dict(color='green', symbol='star', size=10),
+        hovertemplate='Tournament: %{x}<br>Max Rating: %{y}'
+    ))
+
     # Filtering out the 'None' entries for 't1' tournament
-    fig.for_each_trace(lambda trace: trace.update(marker=dict(size=[0 if y is None else 5 for y in trace.y])))
+    fig.for_each_trace(lambda trace: trace.update(marker=dict(size=[0 if y is None else (trace.marker.size if hasattr(trace.marker, 'size') and trace.marker.size is not None else 5) for y in trace.y])))
 
     fig.update_layout(
         title=f'Rating Evolution for {player_name}',
