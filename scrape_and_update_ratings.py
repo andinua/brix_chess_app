@@ -435,11 +435,17 @@ def main():
     st.title('Player Rating Evolution')
     df = pd.read_csv('player_ratings.csv', index_col=0)
 
-    # Creating a select box for players
-    selected_player = st.selectbox('Select a player:', df.index)
+    # Sort players alphabetically
+    sorted_df = df.sort_index()
+
+    # Find the position of 'Andrei' in the sorted index
+    default_index = sorted_df.index.get_loc('Andrei') if 'Andrei' in sorted_df.index else 0
+
+    # Creating a select box for players with 'Andrei' as the default selection
+    selected_player = st.selectbox('Select a player:', sorted_df.index, index=default_index)
 
     # Plotting the selected player's data
-    plot_player_evolution_streamlit(selected_player, df)
+    plot_player_evolution_streamlit(selected_player, sorted_df)
 
 
 if __name__ == '__main__':
