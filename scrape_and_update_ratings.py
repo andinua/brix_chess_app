@@ -293,7 +293,6 @@ def format_values(x):
     return int(round(x))
 
 def plot_player_evolution_streamlit(player_name, df):
-    #TODO: round 1 special treatment were lost when switch to plotly
     all_tournaments = sorted({col.split('-')[0] for col in df.columns})
 
     end_of_tournament_ratings = []
