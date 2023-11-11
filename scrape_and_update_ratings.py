@@ -11,6 +11,7 @@ import os
 import pandas as pd
 import numpy as np
 import streamlit as st
+import plotly.graph_objects as go
 
 # everything should be stored and the loaded for plotting; there should be no updating for tournaments already included in the rating
 
@@ -32,6 +33,10 @@ H2H_FILE = 'head_to_head.json'
 RESULTS_FILE = 'player_results.json'
 
 #TODO: Order players alphabetically
+#TODO: scrape standings and visualize, for each player - g x gold medals, s x silver, b x bronze or best ranking if never on podium
+#TODO: visualize on a map all countries of representation
+#TODO: Round all ratings to integer before plotting
+#TODO: Need to deal with Bye matches (opponent == "")
 
 def scrape_results(url):
     #TODO: also extract and store the tournament name and date
@@ -283,27 +288,37 @@ def plot_player_results_by_color(player_name):
     plt.tight_layout()
     st.pyplot(fig)
 
+def format_values(x):
+    if np.isnan(x):
+        return x
+    return int(round(x))
 
 def plot_player_evolution_streamlit(player_name, df):
     all_tournaments = sorted({col.split('-')[0] for col in df.columns})
 
-    plt.figure(figsize=(10, 6))
-
     end_of_tournament_ratings = []
     max_ratings = []
-    last_known_rating = None
+    round_ratings = []
+    hover_texts = []
+    round_tournaments = []
 
-    player_data = df.loc[player_name]
+    last_known_rating = None
+    player_data = df.loc[player_name].apply(format_values)
 
     for tournament in all_tournaments:
         tournament_data = player_data.filter(like=tournament)
 
         if not tournament_data.isna().all():
-            tournament_ticks = [tournament] * len(tournament_data.dropna())
             if tournament != 't1':
-                plt.scatter(tournament_ticks, tournament_data.dropna().values, color='red', s=15)
+                round_tournament_ticks = [tournament] * len(tournament_data.dropna())
+                round_ratings.extend(tournament_data.dropna().values)
+                hover_texts.extend([f"Round {idx + 1} Rating: {rating}" for idx, rating in enumerate(tournament_data.dropna().values)])
+                round_tournaments.extend(round_tournament_ticks)
             else:
-                plt.scatter([tournament], [last_known_rating], color='red', s=0)
+                # If it's 't1', we consider the last known rating which is initialized to None
+                round_ratings.append(None)
+                hover_texts.append(None)
+                round_tournaments.append(tournament)
 
             last_known_rating = tournament_data.dropna().values[-1]
             end_of_tournament_ratings.append(last_known_rating)
@@ -311,21 +326,52 @@ def plot_player_evolution_streamlit(player_name, df):
         else:
             end_of_tournament_ratings.append(last_known_rating)
             max_ratings.append(np.nan)
-            plt.scatter([tournament], [last_known_rating], color='red', s=0)
 
-    plt.plot(all_tournaments, end_of_tournament_ratings, label='End of Tournament', marker='o', linestyle='-')
-    plt.scatter(all_tournaments, max_ratings, color='green', s=50, marker='*', label='Max Rating in Tournament')
+    fig = go.Figure()
 
-    plt.xticks(all_tournaments, [f'Tournament {i}' for i in range(1, len(all_tournaments)+1)], rotation=45)
-    plt.xlabel('Tournaments')
-    plt.ylabel('Rating')
-    plt.title(f'Rating Evolution for {player_name}')
-    plt.legend()
-    #TODO: add rating after round to legend for red dots, but only once
-    plt.grid(True, which='both', linestyle='--', linewidth=0.5)
-    plt.tight_layout()
+    # Plotting end of tournament ratings
+    fig.add_trace(go.Scatter(
+        x=all_tournaments,
+        y=end_of_tournament_ratings,
+        mode='lines+markers',
+        name='End of Tournament',
+        marker=dict(symbol='square', size=15),
+        hovertemplate='Tournament: %{x}<br>End Rating: %{y}'
+    ))
 
-    st.pyplot(plt)
+    # Plotting round ratings, with handling of 't1' and non-available data
+    fig.add_trace(go.Scatter(
+        x=round_tournaments,
+        y=round_ratings,
+        mode='markers',
+        name='Round Rating',
+        marker=dict(color='red', size=5),
+        hoverinfo='text',
+        hovertext=hover_texts
+    ))
+
+    # Plotting max ratings
+    fig.add_trace(go.Scatter(
+        x=all_tournaments,
+        y=max_ratings,
+        mode='markers',
+        name='Max Rating in Tournament',
+        marker=dict(color='green', symbol='star', size=10),
+        hovertemplate='Tournament: %{x}<br>Max Rating: %{y}'
+    ))
+
+    # Filtering out the 'None' entries for 't1' tournament
+    fig.for_each_trace(lambda trace: trace.update(marker=dict(size=[0 if y is None else (trace.marker.size if hasattr(trace.marker, 'size') and trace.marker.size is not None else 5) for y in trace.y])))
+
+    fig.update_layout(
+        title=f'Rating Evolution for {player_name}',
+        xaxis_title='Tournaments',
+        yaxis_title='Rating',
+        xaxis_tickvals=all_tournaments,
+        xaxis_ticktext=[f'Tournament {i}' for i in range(1, len(all_tournaments) + 1)]
+    )
+
+    st.plotly_chart(fig)
 
     # Plot player results by color
     st.header(f"Game Outcomes by Color for {player_name}:")
