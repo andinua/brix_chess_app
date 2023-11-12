@@ -13,6 +13,7 @@ import numpy as np
 import streamlit as st
 import plotly.graph_objects as go
 
+#TODO: all all new urls for processing
 new_urls = [
     "https://swissonlinetournament.com/Tournament/Details/487026ec898141229c79f424d4a91158?allRounds=true",
     "https://swissonlinetournament.com/Tournament/Details/871e0b55b93d427a8f024f32a0e0dd3f?allRounds=true",
@@ -109,6 +110,7 @@ def load_standings():
     except (FileNotFoundError, json.JSONDecodeError):
         return {}
 
+
 # Function to display standings
 def display_standings():
     standings_data = load_standings()
@@ -129,6 +131,55 @@ def display_standings():
         st.table(standings_df)
     else:
         st.write("No tournament standings data available.")
+
+
+def aggregate_results(results_data):
+    # Aggregating W-D-L results for each player
+    aggregated_results = {}
+    for player, results in results_data.items():
+        total_wins = results["white"]["W"] + results["black"]["W"]
+        total_draws = results["white"]["D"] + results["black"]["D"]
+        total_losses = results["white"]["L"] + results["black"]["L"]
+        aggregated_results[player] = {'Wins': total_wins, 'Draws': total_draws, 'Losses': total_losses}
+    return aggregated_results
+
+
+def display_ranking():
+    try:
+        with open(RATINGS_FILE, "r") as file:
+            ratings_data = json.load(file)
+
+        with open(RESULTS_FILE, "r") as file:
+            results_data = json.load(file)
+
+        # Convert to DataFrame and rename columns
+        ratings_df = pd.DataFrame.from_dict(ratings_data, orient='index')
+        ratings_df.rename(columns={"rating": "Rating", "rd": "Rating Uncertainty (+/-)"}, inplace=True)
+
+        # Convert 'Rating' and 'Rating Uncertainty' to integers
+        ratings_df['Rating'] = ratings_df['Rating'].astype(int)
+        ratings_df['Rating Uncertainty (+/-)'] = ratings_df['Rating Uncertainty (+/-)'].astype(int)
+
+        # Aggregate results and create a DataFrame
+        aggregated_results = aggregate_results(results_data)
+        results_df = pd.DataFrame.from_dict(aggregated_results, orient='index')
+
+        # Merge the ratings and results data
+        combined_df = ratings_df.merge(results_df, left_index=True, right_index=True)
+
+        # Sort by rating in descending order
+        sorted_combined_df = combined_df.sort_values(by='Rating', ascending=False)
+
+        # Reset index to add a numerical index (Rank)
+        sorted_combined_df.reset_index(inplace=True)
+        sorted_combined_df.index = sorted_combined_df.index + 1
+        sorted_combined_df.rename(columns={"index": "Player"}, inplace=True)
+
+        # Use the full screen width for the table
+        st.table(sorted_combined_df)
+
+    except (FileNotFoundError, json.JSONDecodeError):
+        st.write("No ratings or results data available.")
 
 
 def check_new_tournament(url):
@@ -336,6 +387,7 @@ def plot_player_results_by_color(player_name):
         return
 
     #TODO: add percentages for winrates
+    #TODO: visualize as doughnut charts instead of bars
     colors = ['white', 'black']
     outcomes = ['W', 'D', 'L']
     outcome_labels = ['Win', 'Draw', 'Loss']
@@ -506,7 +558,7 @@ def main():
     # plot_player_evolution()
 
     # Create tabs
-    tab1, tab2 = st.tabs(["Player Rating Evolution", "Tournament Standings"])
+    tab1, tab2, tab3 = st.tabs(["Player Rating Evolution", "Tournament Standings", "Global ranking"])
 
     # Tab for Player Rating Evolution
     with tab1:
@@ -529,6 +581,11 @@ def main():
     with tab2:
         st.title('Tournament Standings')
         display_standings()
+
+    # Tab for Global Ranking
+    with tab3:
+        st.title('Global Ranking')
+        display_ranking()
 
 
 if __name__ == '__main__':
