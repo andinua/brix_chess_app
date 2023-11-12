@@ -13,8 +13,6 @@ import numpy as np
 import streamlit as st
 import plotly.graph_objects as go
 
-# everything should be stored and the loaded for plotting; there should be no updating for tournaments already included in the rating
-
 new_urls = [
     "https://swissonlinetournament.com/Tournament/Details/487026ec898141229c79f424d4a91158?allRounds=true",
     "https://swissonlinetournament.com/Tournament/Details/871e0b55b93d427a8f024f32a0e0dd3f?allRounds=true",
@@ -27,19 +25,19 @@ new_urls = [
     "https://swissonlinetournament.com/Tournament/Details/ea2474d6681f48f288d33163b6c5b9d3?allRounds=true",
     "https://swissonlinetournament.com/Tournament/Details/24783a7442cc4666ad4350fd8e47f617?allRounds=true"
 ]
-JSON_FILE = "round_results.json"
+ROUNDS_FILE = 'round_results.json'
 RATINGS_FILE = "player_ratings.json"
 H2H_FILE = 'head_to_head.json'
 RESULTS_FILE = 'player_results.json'
+STANDINGS_FILE = 'standings.json'
 
-#TODO: Order players alphabetically
 #TODO: scrape standings and visualize, for each player - g x gold medals, s x silver, b x bronze or best ranking if never on podium
 #TODO: visualize on a map all countries of representation
 #TODO: Round all ratings to integer before plotting
 #TODO: Need to deal with Bye matches (opponent == "")
+#TODO: also extract and store the tournament name and date from "My Tournaments page"
 
 def scrape_results(url):
-    #TODO: also extract and store the tournament name and date
     page = requests.get(url)
     soup = BeautifulSoup(page.content, "html.parser")
 
@@ -60,10 +58,83 @@ def scrape_results(url):
     return rounds
 
 
+def scrape_standings(url):
+    # Modify the URL as needed
+    url = url.split("?")[0].replace("Details","Rating")
+
+    # Fetch the page content
+    page = requests.get(url)
+    soup = BeautifulSoup(page.content, "html.parser")
+
+    # Find the table by its class
+    table = soup.find('table', class_='table table-striped rating-table')
+
+    # Identify the number of rounds from the table header
+    header = table.find('thead').find_all('th')
+    num_rounds = len(header) - 5  # Subtract fixed columns: Position, Name, Points, Buc1, BucT
+
+    # Initialize an empty list to store each player's data
+    standings = []
+
+    # Iterate over table rows (skip the header row)
+    for row in table.find_all('tr')[1:]:
+        cols = row.find_all('td')
+
+        # Extract data from each cell and add it to the dictionary
+        player_data = {
+            'Position': cols[0].text.strip(),
+            'Name': cols[1].text.strip(),
+            'Points': cols[2].text.strip(),
+        }
+
+        # Dynamically add rounds data
+        for i in range(num_rounds):
+            round_key = f'Round #{i+1}'
+            player_data[round_key] = cols[i + 3].text.strip()  # Adjust index to skip fixed columns
+
+        # Add Buc1 and BucT
+        player_data['Buc1'] = cols[-2].text.strip()
+        player_data['BucT'] = cols[-1].text.strip()
+
+        standings.append(player_data)
+
+    return standings
+
+
+# Load the standings data
+def load_standings():
+    try:
+        with open(STANDINGS_FILE, "r") as f:
+            return json.load(f)
+    except (FileNotFoundError, json.JSONDecodeError):
+        return {}
+
+# Function to display standings
+def display_standings():
+    standings_data = load_standings()
+    if standings_data:
+        # Creating a mapping between user-friendly names and actual keys
+        tournament_keys = list(standings_data.keys())
+        tournament_name_to_key = {f'Tournament {i+1}': key for i, key in enumerate(tournament_keys)}
+
+        # Displaying user-friendly names in the select box
+        selected_tournament_name = st.selectbox("Select a Tournament", list(tournament_name_to_key.keys()))
+
+        # Finding the actual key from the selected name
+        selected_tournament_key = tournament_name_to_key[selected_tournament_name]
+
+        # Convert the selected standings to a DataFrame for better visualization
+        standings_df = pd.DataFrame(standings_data[selected_tournament_key])
+        standings_df.set_index(standings_df.columns[0], inplace=True)
+        st.table(standings_df)
+    else:
+        st.write("No tournament standings data available.")
+
+
 def check_new_tournament(url):
     # Load existing results
     try:
-        with open(JSON_FILE, "r") as f:
+        with open(ROUNDS_FILE, "r") as f:
             data = json.load(f)
     except (FileNotFoundError, json.JSONDecodeError):
         data = {}
@@ -77,10 +148,10 @@ def check_new_tournament(url):
         return False
     
 
-def save_results_to_json(url, results):
+def save_results_to_json(url, results, file):
     # Load existing results
     try:
-        with open(JSON_FILE, "r") as f:
+        with open(file, "r") as f:
             data = json.load(f)
     except (FileNotFoundError, json.JSONDecodeError):
         data = {}
@@ -89,7 +160,7 @@ def save_results_to_json(url, results):
     key = url.split("/")[-1].split("?")[0]
     if key not in data:
         data[key] = results
-        with open(JSON_FILE, "w") as f:
+        with open(file, "w") as f:
             json.dump(data, f)
 
 
@@ -163,7 +234,7 @@ def update_ratings_dataframe():
     else:
         df = pd.DataFrame()
 
-    with open(JSON_FILE, "r") as f:
+    with open(ROUNDS_FILE, "r") as f:
         data = json.load(f)
 
     results_by_color = load_results_by_color()  # Load results from the JSON file
@@ -388,7 +459,7 @@ def plot_player_evolution_streamlit(player_name, df):
         opponents = list(h2h[player_name].keys())
         
         # Create a drop-down list of opponents using selectbox
-        selected_opponent = st.selectbox("Select an opponent", opponents)
+        selected_opponent = st.selectbox("Select an opponent", opponents) #TODO: Order opponents alphabetically
 
         # Display details only if an opponent is selected from the drop-down list
         if selected_opponent:
@@ -428,24 +499,36 @@ def main():
     for url in new_urls:
         if check_new_tournament(url):
             results = scrape_results(url)
-            save_results_to_json(url, results)
+            standings = scrape_standings(url)
+            save_results_to_json(url, results, ROUNDS_FILE)
+            save_results_to_json(url, standings, STANDINGS_FILE)
             update_ratings_dataframe()
     # plot_player_evolution()
 
-    st.title('Player Rating Evolution')
-    df = pd.read_csv('player_ratings.csv', index_col=0)
+    # Create tabs
+    tab1, tab2 = st.tabs(["Player Rating Evolution", "Tournament Standings"])
 
-    # Sort players alphabetically
-    sorted_df = df.sort_index()
+    # Tab for Player Rating Evolution
+    with tab1:
+        st.title('Player Rating Evolution')
+        df = pd.read_csv('player_ratings.csv', index_col=0)
 
-    # Find the position of 'Andrei' in the sorted index
-    default_index = sorted_df.index.get_loc('Andrei') if 'Andrei' in sorted_df.index else 0
+        # Sort players alphabetically
+        sorted_df = df.sort_index()
 
-    # Creating a select box for players with 'Andrei' as the default selection
-    selected_player = st.selectbox('Select a player:', sorted_df.index, index=default_index)
+        # Find the position of 'Andrei' in the sorted index
+        default_index = sorted_df.index.get_loc('Andrei') if 'Andrei' in sorted_df.index else 0
 
-    # Plotting the selected player's data
-    plot_player_evolution_streamlit(selected_player, sorted_df)
+        # Creating a select box for players with 'Andrei' as the default selection
+        selected_player = st.selectbox('Select a player:', sorted_df.index, index=default_index)
+
+        # Plotting the selected player's data
+        plot_player_evolution_streamlit(selected_player, sorted_df)
+
+    # Tab for Tournament Standings
+    with tab2:
+        st.title('Tournament Standings')
+        display_standings()
 
 
 if __name__ == '__main__':
