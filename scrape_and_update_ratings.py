@@ -12,6 +12,7 @@ import pandas as pd
 import numpy as np
 import streamlit as st
 import plotly.graph_objects as go
+from plotly.subplots import make_subplots
 
 #TODO: all all new urls for processing
 new_urls = [
@@ -32,7 +33,7 @@ H2H_FILE = 'head_to_head.json'
 RESULTS_FILE = 'player_results.json'
 STANDINGS_FILE = 'standings.json'
 
-#TODO: scrape standings and visualize, for each player - g x gold medals, s x silver, b x bronze or best ranking if never on podium
+#TODO: unify all player names and results with alises
 #TODO: visualize on a map all countries of representation
 #TODO: Round all ratings to integer before plotting
 #TODO: Need to deal with Bye matches (opponent == "")
@@ -111,7 +112,6 @@ def load_standings():
         return {}
 
 
-# Function to display standings
 def display_standings():
     standings_data = load_standings()
     if standings_data:
@@ -386,37 +386,93 @@ def plot_player_results_by_color(player_name):
         st.write(f"No results found for {player_name}.")
         return
 
-    #TODO: add percentages for winrates
-    #TODO: visualize as doughnut charts instead of bars
     colors = ['white', 'black']
     outcomes = ['W', 'D', 'L']
     outcome_labels = ['Win', 'Draw', 'Loss']
-    outcome_colors = ['green', 'gray', 'red']  # Adding colors for each outcome
+    outcome_colors = ['green', 'gray', 'red']  # Colors for each outcome
 
-    bar_width = 0.2
-    bar_positions = np.arange(len(colors))
+    # Create a subplot with 1 row and 2 columns
+    fig = make_subplots(rows=1, cols=2, specs=[[{'type':'domain'}, {'type':'domain'}]])
 
-    fig, ax = plt.subplots(figsize=(10, 6))
-    for i, outcome in enumerate(outcomes):
-        results = [player_results[color][outcome] for color in colors]
-        ax.bar(bar_positions + i * bar_width, results, width=bar_width, label=outcome_labels[i], color=outcome_colors[i])
+    for i, color in enumerate(colors):
+        total_games = sum([player_results[color][outcome] for outcome in outcomes])
+        if total_games == 0:  # Avoid division by zero
+            continue
 
-    ax.set_xlabel('Color')
-    ax.set_ylabel('Number of Games')
-    ax.set_title(f'Game Outcomes for {player_name} by Color')
-    ax.set_xticks(bar_positions + bar_width)
-    ax.set_xticklabels(colors)
-    ax.legend()
+        values = [player_results[color][outcome] for outcome in outcomes]
+        percentages = [val / total_games * 100 for val in values]
 
-    plt.tight_layout()
-    st.pyplot(fig)
+        # Doughnut chart for each color
+        fig.add_trace(go.Pie(
+            labels=outcome_labels,
+            values=values,
+            name=f'{color.capitalize()} pieces',
+            hole=0.4,
+            marker_colors=outcome_colors,
+            hoverinfo='label+percent+value',
+            hovertemplate='%{label}: %{value} games (%{percent})<extra></extra>'
+        ), 1, i + 1)  # Position the chart in the subplot
+
+    # Update chart layout
+    fig.update_layout(
+        title_text=f'Game Outcomes for {player_name} by Color',
+        annotations=[
+            dict(text='White', x=0.20, y=0.5, font_size=20, showarrow=False),
+            dict(text='Black', x=0.80, y=0.5, font_size=20, showarrow=False)
+        ],
+        showlegend=True
+    )
+
+    st.plotly_chart(fig, use_container_width=True)
+
 
 def format_values(x):
     if np.isnan(x):
         return x
     return int(round(x))
 
+
 def plot_player_evolution_streamlit(player_name, df):
+    # Visualize medals and best placement
+    st.header(f"Medals and best placement for {player_name}:")
+    standings_data = load_standings()
+
+    # Count podium finishes
+    gold_count = 0
+    silver_count = 0
+    bronze_count = 0
+    best_placement = float('inf')
+
+    for tournament in standings_data.values():
+        for player_data in tournament:
+            if player_data['Name'] == player_name:
+                position = player_data['Position']
+                # Updating best_placement logic if necessary
+                if '-' in position:
+                    pos_value = int(position.split('-')[0])  # Take the lower bound for tied positions
+                    best_placement = min(best_placement, pos_value)
+                else:
+                    best_placement = min(best_placement, int(position))
+
+                if '1-' in position:
+                    gold_count += 1
+                elif '2-' in position:
+                    silver_count += 1
+                elif '3-' in position:
+                    bronze_count += 1
+
+    # Display podium finishes or best placement with larger emojis
+    if gold_count or silver_count or bronze_count:
+        medals_html = f"<span style='font-size: 30px;'>🥇 x {gold_count} 🥈 x {silver_count} 🥉 x {bronze_count}</span>"
+        st.markdown(medals_html, unsafe_allow_html=True)
+    else:
+        if best_placement < float('inf'):
+            st.write(f"Best placement: {best_placement}")
+        else:
+            st.write("No placements available.")
+
+    # Visualize medals and best placement
+    st.header(f"Rating evolution in time for {player_name}:")
     all_tournaments = sorted({col.split('-')[0] for col in df.columns})
 
     end_of_tournament_ratings = []
@@ -510,8 +566,11 @@ def plot_player_evolution_streamlit(player_name, df):
         # Get all opponents for the player from the H2H data
         opponents = list(h2h[player_name].keys())
         
-        # Create a drop-down list of opponents using selectbox
-        selected_opponent = st.selectbox("Select an opponent", opponents) #TODO: Order opponents alphabetically
+        # Sort opponents alphabetically
+        sorted_opponents = sorted(opponents)
+
+        # Create a drop-down list of opponents using selectbox, now with sorted opponents
+        selected_opponent = st.selectbox("Select an opponent", sorted_opponents)
 
         # Display details only if an opponent is selected from the drop-down list
         if selected_opponent:
@@ -558,11 +617,11 @@ def main():
     # plot_player_evolution()
 
     # Create tabs
-    tab1, tab2, tab3 = st.tabs(["Player Rating Evolution", "Tournament Standings", "Global ranking"])
+    tab1, tab2, tab3 = st.tabs(["Player Performance", "Tournament Standings", "Global ranking"])
 
-    # Tab for Player Rating Evolution
+    # Tab for Player Performance
     with tab1:
-        st.title('Player Rating Evolution')
+        st.title('Player Performance')
         df = pd.read_csv('player_ratings.csv', index_col=0)
 
         # Sort players alphabetically
