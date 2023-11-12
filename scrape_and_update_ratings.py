@@ -13,6 +13,7 @@ import numpy as np
 import streamlit as st
 import plotly.graph_objects as go
 from plotly.subplots import make_subplots
+import pydeck as pdk
 
 #TODO: all all new urls for processing
 new_urls = [
@@ -32,6 +33,7 @@ RATINGS_FILE = "player_ratings.json"
 H2H_FILE = 'head_to_head.json'
 RESULTS_FILE = 'player_results.json'
 STANDINGS_FILE = 'standings.json'
+GEOGRAPHY_FILE = 'geography.csv'
 
 #TODO: unify all player names and results with alises
 #TODO: visualize on a map all countries of representation
@@ -426,6 +428,67 @@ def plot_player_results_by_color(player_name):
     st.plotly_chart(fig, use_container_width=True)
 
 
+def clean_country_data(df):
+    country_corrections = {
+        "Italian": "Italy",
+        "UK": "United Kingdom",
+        "Czech": "Czech Republic",
+        "KAZ": "Kazakhstan",
+        "CZE": "Czech Republic",
+        "Fr": "France",
+        "Brazilian": "Brazil",
+        "Slovak": "Slovakia",
+        "Ukrainian": "Ukraine",
+        "Gondorian": None,  # Assuming 'Gondorian' is a fictional place and should be removed
+        "Czech/German": "Czech Republic",  # Assuming preference for Czech Republic
+        # Add more corrections as necessary...
+    }
+    df['country'] = df['country'].replace(country_corrections)
+    df = df.dropna()  # Drop rows with NaN values, which may result from non-country entries
+    return df
+
+
+def get_lat_lon(country, cc):
+    # Find the row in the dataset where the country matches
+    row = cc[cc['name'] == country]
+    if not row.empty:
+        return row.iloc[0]['latitude'], row.iloc[0]['longitude']
+    else:
+        return None, None
+
+
+def load_geo_data():
+    df = clean_country_data(pd.read_csv(GEOGRAPHY_FILE, encoding='ISO-8859-1'))
+    cc = pd.read_csv('countries.csv', encoding='ISO-8859-1')
+    df = df.drop_duplicates(subset=['name', 'country'])
+    
+    # Apply get_lat_lon function with the country coordinates dataframe
+    df['lat'], df['lon'] = zip(*df['country'].apply(lambda x: get_lat_lon(x, cc)))
+    
+    return df.dropna(subset=['lat', 'lon'])
+
+
+def map_visualization(df):
+    st.pydeck_chart(pdk.Deck(
+        map_style='mapbox://styles/mapbox/light-v9',
+        initial_view_state=pdk.ViewState(
+            latitude=df['lat'].mean(),
+            longitude=df['lon'].mean(),
+            zoom=1,
+            pitch=50,
+        ),
+        layers=[
+            pdk.Layer(
+                'ScatterplotLayer',
+                data=df,
+                get_position='[lon, lat]',
+                get_color='[200, 30, 0, 160]',
+                get_radius=200000,
+            ),
+        ],
+    ))
+    
+
 def format_values(x):
     if np.isnan(x):
         return x
@@ -454,11 +517,11 @@ def plot_player_evolution_streamlit(player_name, df):
                 else:
                     best_placement = min(best_placement, int(position))
 
-                if '1-' in position:
+                if '1-' in position or position == '1':
                     gold_count += 1
-                elif '2-' in position:
+                elif '2-' in position or position == '2':
                     silver_count += 1
-                elif '3-' in position:
+                elif '3-' in position  or position == '3':
                     bronze_count += 1
 
     # Display podium finishes or best placement with larger emojis
@@ -617,7 +680,7 @@ def main():
     # plot_player_evolution()
 
     # Create tabs
-    tab1, tab2, tab3 = st.tabs(["Player Performance", "Tournament Standings", "Global ranking"])
+    tab1, tab2, tab3, tab4 = st.tabs(["Player Performance", "Tournament Standings", "Global ranking", "Player geography"])
 
     # Tab for Player Performance
     with tab1:
@@ -645,6 +708,11 @@ def main():
     with tab3:
         st.title('Global Ranking')
         display_ranking()
+
+    # Tab for Player geography    
+    with tab4:
+        st.title('Country Distribution of Players')
+        map_visualization(load_geo_data())
 
 
 if __name__ == '__main__':
