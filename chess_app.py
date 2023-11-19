@@ -1,135 +1,34 @@
 """
-Scrape, calculate, plot
+Streamlit App: Visualize data using Streamlit.
 """
 
-import requests
-from bs4 import BeautifulSoup
-from glicko import Player
-import matplotlib.pyplot as plt
-import json
-import os
-import pandas as pd
-import numpy as np
 import streamlit as st
-import plotly.graph_objects as go
+import pandas as pd
+import json
 from plotly.subplots import make_subplots
+import plotly.graph_objects as go
 import pydeck as pdk
+import matplotlib.pyplot as plt
+import numpy as np
 import re
+import os
+from datetime import datetime
 
-new_urls = [
-    "https://swissonlinetournament.com/Tournament/Details/487026ec898141229c79f424d4a91158?allRounds=true",
-    "https://swissonlinetournament.com/Tournament/Details/871e0b55b93d427a8f024f32a0e0dd3f?allRounds=true",
-    "https://swissonlinetournament.com/Tournament/Details/66c4e5add2e645218fd742c148a12c49?allRounds=true",
-    "https://swissonlinetournament.com/Tournament/Details/1e9c1999c93343909606f587f4aad32a?allRounds=true",
-    "https://swissonlinetournament.com/Tournament/Details/51bedead000741a4b1fdc2139287593b?allRounds=true",
-    "https://swissonlinetournament.com/Tournament/Details/0f2736a25a5f43bd804cdae4d383d95f?allRounds=true",
-    "https://swissonlinetournament.com/Tournament/Details/130cbc69c4fc4eea9747aa65bb33f985?allRounds=true",
-    "https://swissonlinetournament.com/Tournament/Details/9550daf89e30439580f4ea1270c3c20c?allRounds=true",
-    "https://swissonlinetournament.com/Tournament/Details/ea2474d6681f48f288d33163b6c5b9d3?allRounds=true",
-    "https://swissonlinetournament.com/Tournament/Details/24783a7442cc4666ad4350fd8e47f617?allRounds=true",
-    "https://swissonlinetournament.com/Tournament/Details/6c5b336f3b244b8992ff76b0dce1cc18?allRounds=true",
-    "https://swissonlinetournament.com/Tournament/Details/c8980bff2afb4b2abf50e9195e44b3bb?allRounds=true",
-    "https://swissonlinetournament.com/Tournament/Details/3bec293b0c41400683f477705644af05?allRounds=true",
-    "https://swissonlinetournament.com/Tournament/Details/77a71054d024477394972ba6758bd6f5?allRounds=true",
-    "https://swissonlinetournament.com/Tournament/Details/c29bda4bbf3e46eb8db7ff8a4d50c89f?allRounds=true",
-    "https://swissonlinetournament.com/Tournament/Details/c297bf58efab488da043663e96b00125?allRounds=true",
-    "https://swissonlinetournament.com/Tournament/Details/ce1c01baac27464ebf16215d637b9c77?allRounds=true"
-]
-ROUNDS_FILE = 'round_results.json'
 RATINGS_FILE = "player_ratings.json"
 H2H_FILE = 'head_to_head.json'
 RESULTS_FILE = 'player_results.json'
 STANDINGS_FILE = 'standings.json'
 GEOGRAPHY_FILE = 'geography.csv'
 
-with open('aliases.json', "r") as file:
-    ALIASES = json.load(file)
-
-#TODO: Round all ratings to integer before plotting
-#TODO: Need to deal with Bye matches (opponent == "")
-#TODO: also extract and store the tournament name and date from "My Tournaments page"
-#TODO: incorporate registration with drop down menu (player ids/player list)
-
-
-def get_alias(player_name):
-    if player_name in ALIASES:
-        return ALIASES[player_name]
-    else:
-        return player_name
-
-
-def scrape_results(url):
-    page = requests.get(url)
-    soup = BeautifulSoup(page.content, "html.parser")
-
-    rounds = []
-
-    for table in soup.findAll("table", class_="table pairs-table"):
-        round_results = []
-        for row in table.findAll("tr", class_="result-row"):
-            cells = row.findAll("td")
-            white_player = get_alias(cells[1].get_text(strip=True))
-            black_player = get_alias(cells[5].get_text(strip=True))
-            result = cells[3].get_text(strip=True)
-
-            round_results.append((white_player, black_player, result))
-
-        rounds.append(round_results)
-
-    return rounds
-
-
-def scrape_standings(url):
-    # Modify the URL as needed
-    url = url.split("?")[0].replace("Details","Rating")
-
-    # Fetch the page content
-    page = requests.get(url)
-    soup = BeautifulSoup(page.content, "html.parser")
-
-    # Find the table by its class
-    table = soup.find('table', class_='table table-striped rating-table')
-
-    # Identify the number of rounds from the table header
-    header = table.find('thead').find_all('th')
-    num_rounds = len(header) - 5  # Subtract fixed columns: Position, Name, Points, Buc1, BucT
-
-    # Initialize an empty list to store each player's data
-    standings = []
-
-    # Iterate over table rows (skip the header row)
-    for row in table.find_all('tr')[1:]:
-        cols = row.find_all('td')
-
-        # Extract data from each cell and add it to the dictionary
-        player_data = {
-            'Position': cols[0].text.strip(),
-            'Name': get_alias(cols[1].text.strip()),
-            'Points': cols[2].text.strip(),
-        }
-
-        # Dynamically add rounds data
-        for i in range(num_rounds):
-            round_key = f'Round #{i+1}'
-            player_data[round_key] = cols[i + 3].text.strip()  # Adjust index to skip fixed columns
-
-        # Add Buc1 and BucT
-        player_data['Buc1'] = cols[-2].text.strip()
-        player_data['BucT'] = cols[-1].text.strip()
-
-        standings.append(player_data)
-
-    return standings
-
 
 # Load the standings data
 def load_standings():
     try:
-        with open(STANDINGS_FILE, "r") as f:
+        with open(STANDINGS_FILE, "r", encoding='utf-8') as f:
             return json.load(f)
     except (FileNotFoundError, json.JSONDecodeError):
         return {}
-
+    
 
 def display_standings():
     standings_data = load_standings()
@@ -148,6 +47,8 @@ def display_standings():
         standings_df = pd.DataFrame(standings_data[selected_tournament_key])
         standings_df.set_index(standings_df.columns[0], inplace=True)
         st.table(standings_df)
+        # Add a fine print explanation for Buc1 and BucT
+        st.caption("Note: 'Buc1' and 'BucT' refer to Buchholz scores, a system used to break ties in chess tournaments. 'Buc1' is the sum of the scores of the opponents a player has faced, excluding the lowest-scoring opponent. 'BucT' is the total sum of the scores of the opponents a player has faced.")
     else:
         st.write("No tournament standings data available.")
 
@@ -165,10 +66,10 @@ def aggregate_results(results_data):
 
 def display_ranking():
     try:
-        with open(RATINGS_FILE, "r") as file:
+        with open(RATINGS_FILE, "r", encoding='utf-8') as file:
             ratings_data = json.load(file)
 
-        with open(RESULTS_FILE, "r") as file:
+        with open(RESULTS_FILE, "r", encoding='utf-8') as file:
             results_data = json.load(file)
 
         # Convert to DataFrame and rename columns
@@ -199,171 +100,7 @@ def display_ranking():
 
     except (FileNotFoundError, json.JSONDecodeError):
         st.write("No ratings or results data available.")
-
-
-def check_new_tournament(url):
-    # Load existing results
-    try:
-        with open(ROUNDS_FILE, "r") as f:
-            data = json.load(f)
-    except (FileNotFoundError, json.JSONDecodeError):
-        data = {}
-
-    # Use today's date as the tournament key
-    key = url.split("/")[-1].split("?")[0]
-    if key not in data:
-        return True
-    else:
-        print("Results for today's tournament already added.")
-        return False
-    
-
-def save_results_to_json(url, results, file):
-    # Load existing results
-    try:
-        with open(file, "r") as f:
-            data = json.load(f)
-    except (FileNotFoundError, json.JSONDecodeError):
-        data = {}
-
-    # Use today's date as the tournament key
-    key = url.split("/")[-1].split("?")[0]
-    if key not in data:
-        data[key] = results
-        with open(file, "w") as f:
-            json.dump(data, f)
-
-
-def load_ratings():
-    try:
-        with open(RATINGS_FILE, "r") as f:
-            ratings_data = json.load(f)
-            return {
-                k: Player(rating=v["rating"], rd=v["rd"])
-                for k, v in ratings_data.items()
-            }
-    except (FileNotFoundError, json.JSONDecodeError):
-        return {}
-
-
-def load_results_by_color():
-    try:
-        with open(RESULTS_FILE, 'r') as f:
-            return json.load(f)
-    except (FileNotFoundError, json.JSONDecodeError):
-        return {}
-
-
-def save_results_by_color(results):
-    with open(RESULTS_FILE, 'w') as f:
-        json.dump(results, f, indent=4)
-
-
-def save_ratings(players):
-    with open(RATINGS_FILE, "w") as f:
-        data = {k: {"rating": v.rating, "rd": v.rd} for k, v in players.items()}
-        json.dump(data, f)
-
-def load_h2h():
-    try:
-        with open(H2H_FILE, "r") as f:
-            return json.load(f)
-    except (FileNotFoundError, json.JSONDecodeError):
-        return {}
-
-def save_h2h(h2h):
-    with open(H2H_FILE, "w") as f:
-        json.dump(h2h, f)
-
-
-def update_h2h(h2h, white, black, result):
-    def ensure_player_opponent(player, opponent):
-        if player not in h2h:
-            h2h[player] = {}
-        if opponent not in h2h[player]:
-            h2h[player][opponent] = {'win': 0, 'loss': 0, 'draw': 0}
-
-    ensure_player_opponent(white, black)
-    ensure_player_opponent(black, white)
-
-    if result == "1-0":
-        h2h[white][black]['win'] += 1
-        h2h[black][white]['loss'] += 1
-    elif result == "0-1":
-        h2h[white][black]['loss'] += 1
-        h2h[black][white]['win'] += 1
-    else:
-        h2h[white][black]['draw'] += 1
-        h2h[black][white]['draw'] += 1
-
-
-def update_ratings_dataframe():
-    # Check if the CSV file exists and initialize/load the DataFrame accordingly
-    if os.path.exists('player_ratings.csv'):
-        df = pd.read_csv('player_ratings.csv', index_col=0)
-    else:
-        df = pd.DataFrame()
-
-    with open(ROUNDS_FILE, "r") as f:
-        data = json.load(f)
-
-    results_by_color = load_results_by_color()  # Load results from the JSON file
-
-    players = load_ratings()
-    h2h = load_h2h()  # Load H2H data at the start
-
-    # Assuming the last key in data is the new tournament
-    new_tournament_key = list(data.keys())[-1]
-    new_tournament = data[new_tournament_key]
-
-    for round_index, round_results in enumerate(new_tournament):
-        for white, black, result in round_results:
-            if result == "1-0":
-                white_result, black_result = 1, 0
-            elif result == "0-1":
-                white_result, black_result = 0, 1
-            else:
-                white_result, black_result = 0.5, 0.5
-                
-            # Update H2H record after processing the game result
-            update_h2h(h2h, white, black, result)
-
-            # Ensure players exist in the players dictionary
-            # If they don't exist, they'll be initialized with default values.
-            if white not in players:
-                players[white] = Player()
-            if black not in players:
-                players[black] = Player()
-
-            players[white].update_player([players[black].rating], [players[black].rd], [white_result])
-            players[black].update_player([players[white].rating], [players[white].rd], [black_result])
-
-            # Update dataframe with the new ratings for the new tournament
-            col_name_white = f't{len(data)}-r{round_index + 1}'
-            df.loc[white, col_name_white] = players[white].rating
-            df.loc[black, col_name_white] = players[black].rating
-
-            # Update the results_by_color for each player based on their color and game outcome
-            if white not in results_by_color:
-                results_by_color[white] = {"white": {"W": 0, "D": 0, "L": 0}, "black": {"W": 0, "D": 0, "L": 0}}
-            if black not in results_by_color:
-                results_by_color[black] = {"white": {"W": 0, "D": 0, "L": 0}, "black": {"W": 0, "D": 0, "L": 0}}
-            
-            if result == "1-0":
-                results_by_color[white]["white"]["W"] += 1
-                results_by_color[black]["black"]["L"] += 1
-            elif result == "0-1":
-                results_by_color[white]["white"]["L"] += 1
-                results_by_color[black]["black"]["W"] += 1
-            else:
-                results_by_color[white]["white"]["D"] += 1
-                results_by_color[black]["black"]["D"] += 1
-
-    save_h2h(h2h)
-    save_ratings(players)
-    save_results_by_color(results_by_color)
-    df.to_csv('player_ratings.csv')  # Save the updated dataframe to the same CSV file
-
+        
 
 def plot_two_player_evolution(player1, player2, df):
     """Plots the rating evolution for two players."""
@@ -397,7 +134,7 @@ def plot_two_player_evolution(player1, player2, df):
 
 def plot_player_results_by_color(player_name):
     # Load player results
-    with open(RESULTS_FILE, "r") as f:
+    with open(RESULTS_FILE, "r", encoding='utf-8') as f:
         results_data = json.load(f)
 
     player_results = results_data.get(player_name, None)
@@ -458,6 +195,7 @@ def clean_country_data(df):
         "Ukrainian": "Ukraine",
         "Gondorian": None,  # Assuming 'Gondorian' is a fictional place and should be removed
         "Czech/German": "Czech Republic",  # Assuming preference for Czech Republic
+        "Nigerian": "Nigeria",
         # Add more corrections as necessary...
     }
     df['country'] = df['country'].replace(country_corrections)
@@ -643,7 +381,7 @@ def plot_player_evolution_streamlit(player_name, df):
     plot_player_results_by_color(player_name)
 
     # Load H2H data
-    with open(H2H_FILE, "r") as f:
+    with open(H2H_FILE, "r", encoding='utf-8') as f:
         h2h = json.load(f)
 
     if player_name in h2h:
@@ -692,16 +430,15 @@ def plot_player_evolution_streamlit(player_name, df):
         st.write(f"No Head to Head Records found for {player_name}.")
 
 
-def main():
-    for url in new_urls:
-        if check_new_tournament(url):
-            results = scrape_results(url)
-            standings = scrape_standings(url)
-            save_results_to_json(url, results, ROUNDS_FILE)
-            save_results_to_json(url, standings, STANDINGS_FILE)
-            update_ratings_dataframe()
-    # plot_player_evolution()
+def get_last_update_time(file_path):
+    try:
+        modification_time = os.path.getmtime(file_path)
+        return datetime.fromtimestamp(modification_time)
+    except OSError:
+        return None        
 
+
+def main():
     # Create tabs
     tab1, tab2, tab3, tab4 = st.tabs(["Player Performance", "Tournament Standings", "Global ranking", "Player geography"])
 
@@ -709,7 +446,16 @@ def main():
     with tab1:
         st.title('Player Performance')
         df = pd.read_csv('player_ratings.csv', index_col=0)
+        
+		# Get the last update time of player_ratings.csv
+        last_update_time = get_last_update_time('player_ratings.csv')
 
+        if last_update_time:
+            st.markdown(f"Last update on: {last_update_time.strftime('%Y-%m-%d %H:%M:%S')}")
+            
+        # Remove rows where the index is NaN
+        df = df[df.index.notnull()]
+        
         # Sort players alphabetically
         sorted_df = df.sort_index()
 
@@ -736,7 +482,6 @@ def main():
     with tab4:
         st.title('Country Distribution of Players')
         map_visualization(load_geo_data())
-
 
 if __name__ == '__main__':
     main()
