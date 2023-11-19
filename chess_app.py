@@ -461,13 +461,21 @@ def main():
             st.markdown(f"Last update on: {last_update_time.strftime('%Y-%m-%d %H:%M:%S')}")
             
         sorted_df = load_players()
-        # Find the index of 'Andrei Dinu'
-        default_index = sorted_df.index.get_loc('Andrei Dinu') if 'Andrei Dinu' in sorted_df.index else 0
 
-        # Creating a select box with 'Andrei Dinu' as the default selection
-        selected_player = st.selectbox('Select a player:', sorted_df.index, index=default_index, key='player_select')
+        # Initialize session state for first load
+        if 'first_load' not in st.session_state:
+            st.session_state.first_load = True
+            st.session_state.selected_player = 'Andrei Dinu'
 
-        # Plotting the selected player's data
+        if st.session_state.first_load:
+            default_index = sorted_df.index.get_loc('Andrei Dinu')
+            selected_player = st.selectbox('Select a player:', sorted_df.index, index=default_index, key='player_select')
+            st.session_state.first_load = False
+        else:
+            selected_player = st.selectbox('Select a player:', sorted_df.index, key='player_select')
+
+        st.session_state.selected_player = selected_player
+
         plot_player_evolution_streamlit(selected_player, sorted_df)
 
     # Tab for Tournament Standings
