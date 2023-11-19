@@ -14,8 +14,8 @@ import streamlit as st
 import plotly.graph_objects as go
 from plotly.subplots import make_subplots
 import pydeck as pdk
+import re
 
-#TODO: all all new urls for processing
 new_urls = [
     "https://swissonlinetournament.com/Tournament/Details/487026ec898141229c79f424d4a91158?allRounds=true",
     "https://swissonlinetournament.com/Tournament/Details/871e0b55b93d427a8f024f32a0e0dd3f?allRounds=true",
@@ -26,7 +26,14 @@ new_urls = [
     "https://swissonlinetournament.com/Tournament/Details/130cbc69c4fc4eea9747aa65bb33f985?allRounds=true",
     "https://swissonlinetournament.com/Tournament/Details/9550daf89e30439580f4ea1270c3c20c?allRounds=true",
     "https://swissonlinetournament.com/Tournament/Details/ea2474d6681f48f288d33163b6c5b9d3?allRounds=true",
-    "https://swissonlinetournament.com/Tournament/Details/24783a7442cc4666ad4350fd8e47f617?allRounds=true"
+    "https://swissonlinetournament.com/Tournament/Details/24783a7442cc4666ad4350fd8e47f617?allRounds=true",
+    "https://swissonlinetournament.com/Tournament/Details/6c5b336f3b244b8992ff76b0dce1cc18?allRounds=true",
+    "https://swissonlinetournament.com/Tournament/Details/c8980bff2afb4b2abf50e9195e44b3bb?allRounds=true",
+    "https://swissonlinetournament.com/Tournament/Details/3bec293b0c41400683f477705644af05?allRounds=true",
+    "https://swissonlinetournament.com/Tournament/Details/77a71054d024477394972ba6758bd6f5?allRounds=true",
+    "https://swissonlinetournament.com/Tournament/Details/c29bda4bbf3e46eb8db7ff8a4d50c89f?allRounds=true",
+    "https://swissonlinetournament.com/Tournament/Details/c297bf58efab488da043663e96b00125?allRounds=true",
+    "https://swissonlinetournament.com/Tournament/Details/ce1c01baac27464ebf16215d637b9c77?allRounds=true"
 ]
 ROUNDS_FILE = 'round_results.json'
 RATINGS_FILE = "player_ratings.json"
@@ -35,11 +42,25 @@ RESULTS_FILE = 'player_results.json'
 STANDINGS_FILE = 'standings.json'
 GEOGRAPHY_FILE = 'geography.csv'
 
+with open('aliases.json', "r") as file:
+    ALIASES = json.load(file)
+
 #TODO: unify all player names and results with alises
 #TODO: visualize on a map all countries of representation
 #TODO: Round all ratings to integer before plotting
 #TODO: Need to deal with Bye matches (opponent == "")
 #TODO: also extract and store the tournament name and date from "My Tournaments page"
+#TODO: add a tooltip or short explanation of how the Bucholz/tiebreaker scores work
+#TODO: incorporate registration with drop down menu (player ids/player list)
+#TODO: Add Last updated on: 
+
+
+def get_alias(player_name):
+    if player_name in ALIASES:
+        return ALIASES[player_name]
+    else:
+        return player_name
+
 
 def scrape_results(url):
     page = requests.get(url)
@@ -51,8 +72,8 @@ def scrape_results(url):
         round_results = []
         for row in table.findAll("tr", class_="result-row"):
             cells = row.findAll("td")
-            white_player = cells[1].get_text(strip=True)
-            black_player = cells[5].get_text(strip=True)
+            white_player = get_alias(cells[1].get_text(strip=True))
+            black_player = get_alias(cells[5].get_text(strip=True))
             result = cells[3].get_text(strip=True)
 
             round_results.append((white_player, black_player, result))
@@ -87,7 +108,7 @@ def scrape_standings(url):
         # Extract data from each cell and add it to the dictionary
         player_data = {
             'Position': cols[0].text.strip(),
-            'Name': cols[1].text.strip(),
+            'Name': get_alias(cols[1].text.strip()),
             'Points': cols[2].text.strip(),
         }
 
@@ -495,6 +516,12 @@ def format_values(x):
     return int(round(x))
 
 
+# Extract the numerical part and use it for sorting
+def extract_number(s):
+    match = re.search(r'\d+$', s)
+    return int(match.group()) if match else 0
+
+
 def plot_player_evolution_streamlit(player_name, df):
     # Visualize medals and best placement
     st.header(f"Medals and best placement for {player_name}:")
@@ -536,7 +563,7 @@ def plot_player_evolution_streamlit(player_name, df):
 
     # Visualize medals and best placement
     st.header(f"Rating evolution in time for {player_name}:")
-    all_tournaments = sorted({col.split('-')[0] for col in df.columns})
+    all_tournaments = sorted({col.split('-')[0] for col in df.columns}, key=extract_number)
 
     end_of_tournament_ratings = []
     max_ratings = []
@@ -548,7 +575,7 @@ def plot_player_evolution_streamlit(player_name, df):
     player_data = df.loc[player_name].apply(format_values)
 
     for tournament in all_tournaments:
-        tournament_data = player_data.filter(like=tournament)
+        tournament_data = player_data[player_data.index.str.startswith(tournament + '-')]
 
         if not tournament_data.isna().all():
             if tournament != 't1':
@@ -690,8 +717,8 @@ def main():
         # Sort players alphabetically
         sorted_df = df.sort_index()
 
-        # Find the position of 'Andrei' in the sorted index
-        default_index = sorted_df.index.get_loc('Andrei') if 'Andrei' in sorted_df.index else 0
+        # Find the position of 'Andrei Dinu' in the sorted index
+        default_index = sorted_df.index.get_loc('Andrei Dinu') if 'Andrei Dinu' in sorted_df.index else 0
 
         # Creating a select box for players with 'Andrei' as the default selection
         selected_player = st.selectbox('Select a player:', sorted_df.index, index=default_index)
