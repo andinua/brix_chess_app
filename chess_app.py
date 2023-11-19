@@ -394,7 +394,7 @@ def plot_player_evolution_streamlit(player_name, df):
         sorted_opponents = sorted(opponents)
 
         # Create a drop-down list of opponents using selectbox, now with sorted opponents
-        selected_opponent = st.selectbox("Select an opponent", sorted_opponents)
+        selected_opponent = st.selectbox("Select an opponent", sorted_opponents, key='opponent_select')
 
         # Display details only if an opponent is selected from the drop-down list
         if selected_opponent:
@@ -438,6 +438,14 @@ def get_last_update_time(file_path):
         return None        
 
 
+@st.cache_data  # Add the caching decorator
+def load_players():
+    df = pd.read_csv('player_ratings.csv', index_col=0)
+    df = df[df.index.notnull()]  # Remove rows where the index is NaN
+    sorted_df = df.sort_index()
+    return sorted_df
+
+
 def main():
     # Create tabs
     tab1, tab2, tab3, tab4 = st.tabs(["Player Performance", "Tournament Standings", "Global ranking", "Player geography"])
@@ -445,25 +453,19 @@ def main():
     # Tab for Player Performance
     with tab1:
         st.title('Player Performance')
-        df = pd.read_csv('player_ratings.csv', index_col=0)
-        
+     
 		# Get the last update time of player_ratings.csv
         last_update_time = get_last_update_time('player_ratings.csv')
 
         if last_update_time:
             st.markdown(f"Last update on: {last_update_time.strftime('%Y-%m-%d %H:%M:%S')}")
             
-        # Remove rows where the index is NaN
-        df = df[df.index.notnull()]
-        
-        # Sort players alphabetically
-        sorted_df = df.sort_index()
-
-        # Find the position of 'Andrei Dinu' in the sorted index
+        sorted_df = load_players()
+        # Find the index of 'Andrei Dinu'
         default_index = sorted_df.index.get_loc('Andrei Dinu') if 'Andrei Dinu' in sorted_df.index else 0
 
-        # Creating a select box for players with 'Andrei' as the default selection
-        selected_player = st.selectbox('Select a player:', sorted_df.index, index=default_index)
+        # Creating a select box with 'Andrei Dinu' as the default selection
+        selected_player = st.selectbox('Select a player:', sorted_df.index, index=default_index, key='player_select')
 
         # Plotting the selected player's data
         plot_player_evolution_streamlit(selected_player, sorted_df)
