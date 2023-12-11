@@ -26,7 +26,10 @@ new_urls = [
     "https://swissonlinetournament.com/Tournament/Details/77a71054d024477394972ba6758bd6f5?allRounds=true",
     "https://swissonlinetournament.com/Tournament/Details/c29bda4bbf3e46eb8db7ff8a4d50c89f?allRounds=true",
     "https://swissonlinetournament.com/Tournament/Details/c297bf58efab488da043663e96b00125?allRounds=true",
-    "https://swissonlinetournament.com/Tournament/Details/ce1c01baac27464ebf16215d637b9c77?allRounds=true"
+    "https://swissonlinetournament.com/Tournament/Details/ce1c01baac27464ebf16215d637b9c77?allRounds=true",
+    "https://swissonlinetournament.com/Tournament/Details/5aecf13934b6476b8cdfa673a2d737d4?allRounds=true",
+    "https://swissonlinetournament.com/Tournament/Details/a36bea22ea7046d5b6152af88270bf2f?allRounds=true",
+    "https://swissonlinetournament.com/Tournament/Details/6db995319eb84dfe94f9f7c9dff70a2f?allRounds=true"
 ]
 
 ROUNDS_FILE = 'round_results.json'

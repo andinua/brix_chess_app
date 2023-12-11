@@ -278,11 +278,11 @@ def plot_player_evolution_streamlit(player_name, df):
                 else:
                     best_placement = min(best_placement, int(position))
 
-                if '1-' in position or position == '1':
+                if position.startswith('1-') or position == '1':
                     gold_count += 1
-                elif '2-' in position or position == '2':
+                elif position.startswith('2-') or position == '2':
                     silver_count += 1
-                elif '3-' in position  or position == '3':
+                elif position.startswith('3-') or position == '3':
                     bronze_count += 1
 
     # Display podium finishes or best placement with larger emojis
