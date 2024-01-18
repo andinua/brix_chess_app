@@ -32,7 +32,8 @@ new_urls = [
     "https://swissonlinetournament.com/Tournament/Details/6db995319eb84dfe94f9f7c9dff70a2f?allRounds=true",
     "https://swissonlinetournament.com/Tournament/Details/b5470bdbc4f64c2188f52ccaef2d1030?allRounds=true",
     "https://swissonlinetournament.com/Tournament/Details/6170250c6aef46c287d386457af26274?allRounds=true",
-    "https://swissonlinetournament.com/Tournament/Details/d3ca622b74114d25a6208381bcd1e3a5?allRounds=true"
+    "https://swissonlinetournament.com/Tournament/Details/d3ca622b74114d25a6208381bcd1e3a5?allRounds=true",
+    "https://swissonlinetournament.com/Tournament/Details/3f6cbd33cb064bfa82d71412e33d07eb?allRounds=true"
 
 ]
 
